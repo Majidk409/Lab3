@@ -1,52 +1,15 @@
-#include <iostream>
-#include <vector>
-#include <queue>
-#include <algorithm>
-#include <fstream>
-#include <climits>
-#include <map>
-#include <numeric>
+#include "Scheduler.h"
+
 
 using namespace std;
-
-struct Process {
-    int id;
-    int arrival_time;
-    vector<int> cpu_bursts;
-    vector<int> io_bursts;
-    int current_burst;
-    int remaining_time;
-    int turnaround_time;
-    int waiting_time;
-    int completion_time;
-
-    Process(int id, int arrival_time, vector<int> cpu_bursts, vector<int> io_bursts)
-        : id(id), arrival_time(arrival_time), cpu_bursts(cpu_bursts), io_bursts(io_bursts), current_burst(0), remaining_time(cpu_bursts[0]), turnaround_time(0), waiting_time(0), completion_time(0) {}
-};
-
-vector<Process> parseWorkloadFile(const string &file_path) {
-    ifstream infile(file_path);
-    vector<Process> processes;
-    int arrival_time, burst;
-    int process_id = 0;
-    while (infile >> arrival_time) {
-        vector<int> cpu_bursts;
-        vector<int> io_bursts;
-        while (infile >> burst && burst != -1) {
-            cpu_bursts.push_back(burst);
-            if (infile.peek() != '\n') {
-                infile >> burst;
-                io_bursts.push_back(burst);
-            }
-        }
-        processes.emplace_back(process_id++, arrival_time, cpu_bursts, io_bursts);
-    }
-    return processes;
-}
+using namespace std::chrono;
 
 void runFIFO(vector<Process> &processes) {
     int current_time = 0;
     int total_turnaround_time = 0, total_waiting_time = 0;
+    int max_turnaround_time = 0, max_waiting_time = 0;
+
+    auto start_time = high_resolution_clock::now();
 
     for (auto &process : processes) {
         if (current_time < process.arrival_time) {
@@ -61,17 +24,31 @@ void runFIFO(vector<Process> &processes) {
 
         total_turnaround_time += process.turnaround_time;
         total_waiting_time += process.waiting_time;
+
+        if (process.turnaround_time > max_turnaround_time) max_turnaround_time = process.turnaround_time;
+        if (process.waiting_time > max_waiting_time) max_waiting_time = process.waiting_time;
     }
+
+    auto end_time = high_resolution_clock::now();
+    duration<double> elapsed_time = end_time - start_time;
 
     int n = processes.size();
     cout << "FIFO Average Turnaround Time: " << (double)total_turnaround_time / n << endl;
+    cout << "FIFO Max Turnaround Time: " << max_turnaround_time << endl;
     cout << "FIFO Average Waiting Time: " << (double)total_waiting_time / n << endl;
+    cout << "FIFO Max Waiting Time: " << max_waiting_time << endl;
+    cout << "FIFO Throughput: " << (double)n / elapsed_time.count() << " processes per second" << endl;
+    cout << "FIFO Simulator Run Time: " << elapsed_time.count() << " seconds" << endl;
 }
+
 
 void runNonPreemptiveSJF(vector<Process> &processes) {
     int current_time = 0;
     int total_turnaround_time = 0, total_waiting_time = 0;
+    int max_turnaround_time = 0, max_waiting_time = 0;
     vector<Process*> ready_queue;
+
+    auto start_time = chrono::steady_clock::now();
 
     while (!processes.empty() || !ready_queue.empty()) {
         for (auto it = processes.begin(); it != processes.end();) {
@@ -101,17 +78,30 @@ void runNonPreemptiveSJF(vector<Process> &processes) {
 
         total_turnaround_time += process->turnaround_time;
         total_waiting_time += process->waiting_time;
+
+        if (process->turnaround_time > max_turnaround_time) max_turnaround_time = process->turnaround_time;
+        if (process->waiting_time > max_waiting_time) max_waiting_time = process->waiting_time;
     }
+
+    auto end_time = chrono::steady_clock::now();
+    chrono::duration<double> elapsed_time = end_time - start_time;
 
     int n = processes.size();
     cout << "Non-Preemptive SJF Average Turnaround Time: " << (double)total_turnaround_time / n << endl;
+    cout << "Non-Preemptive SJF Max Turnaround Time: " << max_turnaround_time << endl;
     cout << "Non-Preemptive SJF Average Waiting Time: " << (double)total_waiting_time / n << endl;
+    cout << "Non-Preemptive SJF Max Waiting Time: " << max_waiting_time << endl;
+    cout << "Non-Preemptive SJF Throughput: " << (double)n / elapsed_time.count() << " processes per second" << endl;
+    cout << "Non-Preemptive SJF Simulator Run Time: " << elapsed_time.count() << " seconds" << endl;
 }
 
 void runPreemptiveSJF(vector<Process> &processes) {
     int current_time = 0;
     int total_turnaround_time = 0, total_waiting_time = 0;
+    int max_turnaround_time = 0, max_waiting_time = 0;
     vector<Process*> ready_queue;
+
+    auto start_time = chrono::steady_clock::now();
 
     while (!processes.empty() || !ready_queue.empty()) {
         for (auto it = processes.begin(); it != processes.end();) {
@@ -141,18 +131,32 @@ void runPreemptiveSJF(vector<Process> &processes) {
             process->completion_time = current_time;
             total_turnaround_time += process->turnaround_time;
             total_waiting_time += (process->turnaround_time - accumulate(process->cpu_bursts.begin(), process->cpu_bursts.end(), 0));
+            
+            if (process->turnaround_time > max_turnaround_time) max_turnaround_time = process->turnaround_time;
+            if ((process->turnaround_time - accumulate(process->cpu_bursts.begin(), process->cpu_bursts.end(), 0)) > max_waiting_time) 
+                max_waiting_time = (process->turnaround_time - accumulate(process->cpu_bursts.begin(), process->cpu_bursts.end(), 0));
         }
     }
 
+    auto end_time = chrono::steady_clock::now();
+    chrono::duration<double> elapsed_time = end_time - start_time;
+
     int n = processes.size();
     cout << "Preemptive SJF Average Turnaround Time: " << (double)total_turnaround_time / n << endl;
+    cout << "Preemptive SJF Max Turnaround Time: " << max_turnaround_time << endl;
     cout << "Preemptive SJF Average Waiting Time: " << (double)total_waiting_time / n << endl;
+    cout << "Preemptive SJF Max Waiting Time: " << max_waiting_time << endl;
+    cout << "Preemptive SJF Throughput: " << (double)n / elapsed_time.count() << " processes per second" << endl;
+    cout << "Preemptive SJF Simulator Run Time: " << elapsed_time.count() << " seconds" << endl;
 }
 
 void runCFS(vector<Process> &processes) {
     int current_time = 0;
     int total_turnaround_time = 0, total_waiting_time = 0;
+    int max_turnaround_time = 0, max_waiting_time = 0;
     map<int, Process*> cfs_tree;
+
+    auto start_time = chrono::steady_clock::now();
 
     while (!processes.empty() || !cfs_tree.empty()) {
         for (auto it = processes.begin(); it != processes.end();) {
@@ -180,12 +184,23 @@ void runCFS(vector<Process> &processes) {
             process->completion_time = current_time;
             total_turnaround_time += process->turnaround_time;
             total_waiting_time += (process->turnaround_time - accumulate(process->cpu_bursts.begin(), process->cpu_bursts.end(), 0));
+            
+            if (process->turnaround_time > max_turnaround_time) max_turnaround_time = process->turnaround_time;
+            if ((process->turnaround_time - accumulate(process->cpu_bursts.begin(), process->cpu_bursts.end(), 0)) > max_waiting_time) 
+                max_waiting_time = (process->turnaround_time - accumulate(process->cpu_bursts.begin(), process->cpu_bursts.end(), 0));
         }
     }
 
+    auto end_time = chrono::steady_clock::now();
+    chrono::duration<double> elapsed_time = end_time - start_time;
+
     int n = processes.size();
     cout << "CFS Average Turnaround Time: " << (double)total_turnaround_time / n << endl;
+    cout << "CFS Max Turnaround Time: " << max_turnaround_time << endl;
     cout << "CFS Average Waiting Time: " << (double)total_waiting_time / n << endl;
+    cout << "CFS Max Waiting Time: " << max_waiting_time << endl;
+    cout << "CFS Throughput: " << (double)n / elapsed_time.count() << " processes per second" << endl;
+    cout << "CFS Simulator Run Time: " << elapsed_time.count() << " seconds" << endl;
 }
 
 int main(int argc, char *argv[]) {
@@ -201,9 +216,9 @@ int main(int argc, char *argv[]) {
 
     if (algorithm == "FIFO") {
         runFIFO(processes);
-    } else if (algorithm == "NPSJF") {
+    } else if (algorithm == "SJF") {
         runNonPreemptiveSJF(processes);
-    } else if (algorithm == "PSJF") {
+    } else if (algorithm == "SJF-Preemptive") {
         runPreemptiveSJF(processes);
     } else if (algorithm == "CFS") {
         runCFS(processes);
